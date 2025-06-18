@@ -84,10 +84,7 @@ pub struct AllowedHostConfig {
 }
 
 impl AllowedHostConfig {
-    /// Try to parse the address.
-    ///
-    /// If the parsing fails, the address is prepended with the scheme and parsing
-    /// is tried again.
+    /// Parses the given string as an `allowed_hosts_config` item.
     pub fn parse(url: impl Into<String>) -> anyhow::Result<Self> {
         let original = url.into();
         let url = original.trim();
@@ -435,7 +432,7 @@ pub struct OutboundUrl {
 }
 
 impl OutboundUrl {
-    /// Parse a URL.
+    /// Parses a URL.
     ///
     /// If parsing `url` fails, `{scheme}://` is prepended to `url` and parsing is tried again.
     pub fn parse(url: impl Into<String>, scheme: &str) -> anyhow::Result<Self> {
