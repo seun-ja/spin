@@ -3,6 +3,7 @@ use std::ops::Range;
 use anyhow::{bail, ensure, Context};
 use spin_factors::{App, AppComponent};
 use spin_locked_app::MetadataKey;
+use url::Host;
 
 const ALLOWED_HOSTS_KEY: MetadataKey<Vec<String>> = MetadataKey::new("allowed_outbound_hosts");
 const ALLOWED_HTTP_KEY: MetadataKey<Vec<String>> = MetadataKey::new("allowed_http_hosts");
@@ -105,10 +106,17 @@ impl AllowedHostConfig {
             None => rest,
         };
 
+        let port = PortConfig::parse(port, scheme)
+            .with_context(|| format!("Invalid allowed host port {port:?}"))?;
+        let scheme = SchemeConfig::parse(scheme)
+            .with_context(|| format!("Invalid allowed host scheme {scheme:?}"))?;
+        let host =
+            HostConfig::parse(host).with_context(|| format!("Invalid allowed host {host:?}"))?;
+
         Ok(Self {
-            scheme: SchemeConfig::parse(scheme)?,
-            host: HostConfig::parse(host)?,
-            port: PortConfig::parse(port, scheme)?,
+            scheme,
+            host,
+            port,
             original,
         })
     }
@@ -126,6 +134,11 @@ impl AllowedHostConfig {
     /// Returns the port part of this config.
     pub fn port(&self) -> &PortConfig {
         &self.port
+    }
+
+    /// Returns true if this config is for service chaining requests.
+    pub fn is_for_service_chaining(&self) -> bool {
+        self.host.is_for_service_chaining()
     }
 
     /// Returns true if the given url is allowed by this config.
@@ -172,11 +185,11 @@ impl SchemeConfig {
 
         if scheme.starts_with('{') {
             // TODO:
-            bail!("scheme lists are not yet supported")
+            anyhow::bail!("scheme lists are not yet supported")
         }
 
         if scheme.chars().any(|c| !c.is_alphabetic()) {
-            anyhow::bail!(" scheme {scheme:?} contains non alphabetic character");
+            anyhow::bail!("only alphabetic character(s) are allowed");
         }
 
         Ok(Self::List(vec![scheme.into()]))
@@ -202,7 +215,7 @@ pub enum HostConfig {
     Any,
     AnySubdomain(String),
     ToSelf,
-    List(Vec<String>),
+    Literal(Host),
     Cidr(ip_network::IpNetwork),
 }
 
@@ -227,40 +240,47 @@ impl HostConfig {
             return Ok(Self::Cidr(net));
         }
 
-        if matches!(host.split('/').nth(1), Some(path) if !path.is_empty()) {
-            bail!("hosts must not contain paths");
+        host = host.trim_end_matches('/');
+        if host.contains('/') {
+            bail!("must not include a path");
         }
 
         if let Some(domain) = host.strip_prefix("*.") {
             if domain.contains('*') {
-                bail!("Invalid allowed host {host}: wildcards are allowed only as prefixes");
+                bail!("wildcards are allowed only as prefixes");
             }
             return Ok(Self::AnySubdomain(format!(".{domain}")));
         }
 
         if host.contains('*') {
-            bail!("Invalid allowed host {host}: wildcards are allowed only as subdomains");
+            bail!("wildcards are allowed only as subdomains");
         }
 
-        // Remove trailing slashes
-        host = host.trim_end_matches('/');
+        Self::literal(host)
+    }
 
-        Ok(Self::List(vec![host.into()]))
+    /// Returns a HostConfig from the given literal host name.
+    fn literal(host: &str) -> anyhow::Result<Self> {
+        Ok(Self::Literal(Host::parse(host)?))
     }
 
     /// Returns true if the given host is allowed by this config.
     fn allows(&self, host: &str) -> bool {
-        match self {
-            HostConfig::Any => true,
-            HostConfig::AnySubdomain(suffix) => host.ends_with(suffix),
-            HostConfig::List(l) => l.iter().any(|h| h.as_str() == host),
-            HostConfig::ToSelf => false,
-            HostConfig::Cidr(c) => {
-                let Ok(ip) = host.parse::<std::net::IpAddr>() else {
-                    return false;
-                };
-                c.contains(ip)
+        let host: Host = match Host::parse(host) {
+            Ok(host) => host,
+            Err(err) => {
+                tracing::warn!(?err, "invalid host in HostConfig::allows");
+                return false;
             }
+        };
+        match (self, host) {
+            (HostConfig::Any, _) => true,
+            (HostConfig::AnySubdomain(suffix), Host::Domain(domain)) => domain.ends_with(suffix),
+            (HostConfig::Literal(literal), host) => host == *literal,
+            (HostConfig::Cidr(c), Host::Ipv4(ip)) => c.contains(ip),
+            (HostConfig::Cidr(c), Host::Ipv6(ip)) => c.contains(ip),
+            // Note: HostConfig::ToSelf is checked with ::allow_relative
+            _ => false,
         }
     }
 
@@ -268,8 +288,18 @@ impl HostConfig {
     fn allows_relative(&self) -> bool {
         matches!(self, Self::Any | Self::ToSelf)
     }
+
+    /// Returns true if this config is for service chaining requests.
+    fn is_for_service_chaining(&self) -> bool {
+        match self {
+            Self::Literal(Host::Domain(domain)) => domain.ends_with(SERVICE_CHAINING_DOMAIN_SUFFIX),
+            Self::AnySubdomain(suffix) => suffix == SERVICE_CHAINING_DOMAIN_SUFFIX,
+            _ => false,
+        }
+    }
 }
 
+/// Represents the port part of an allowed_outbound_hosts item.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PortConfig {
     Any,
@@ -561,9 +591,10 @@ mod test {
     }
 
     impl HostConfig {
-        fn new(host: &str) -> Self {
-            Self::List(vec![host.into()])
+        fn unwrap_literal(host: &str) -> Self {
+            Self::literal(host).unwrap_or_else(|_| panic!("invalid host {host:?}"))
         }
+
         fn subdomain(domain: &str) -> Self {
             Self::AnySubdomain(format!(".{domain}"))
         }
@@ -612,7 +643,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(80)
             ),
             AllowedHostConfig::parse("http://spin.fermyon.dev").unwrap()
@@ -622,7 +653,7 @@ mod test {
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
                 // Trailing slash is removed
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(80)
             ),
             AllowedHostConfig::parse("http://spin.fermyon.dev/").unwrap()
@@ -631,7 +662,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("https"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(443)
             ),
             AllowedHostConfig::parse("https://spin.fermyon.dev").unwrap()
@@ -643,7 +674,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(4444)
             ),
             AllowedHostConfig::parse("http://spin.fermyon.dev:4444").unwrap()
@@ -651,7 +682,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(4444)
             ),
             AllowedHostConfig::parse("http://spin.fermyon.dev:4444/").unwrap()
@@ -659,7 +690,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("https"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(5555)
             ),
             AllowedHostConfig::parse("https://spin.fermyon.dev:5555").unwrap()
@@ -671,7 +702,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::range(4444..5555)
             ),
             AllowedHostConfig::parse("http://spin.fermyon.dev:4444..5555").unwrap()
@@ -693,7 +724,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::Any,
-                HostConfig::new("spin.fermyon.dev"),
+                HostConfig::unwrap_literal("spin.fermyon.dev"),
                 PortConfig::new(7777)
             ),
             AllowedHostConfig::parse("*://spin.fermyon.dev:7777").unwrap()
@@ -718,7 +749,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("localhost"),
+                HostConfig::unwrap_literal("localhost"),
                 PortConfig::new(80)
             ),
             AllowedHostConfig::parse("http://localhost").unwrap()
@@ -727,7 +758,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("localhost"),
+                HostConfig::unwrap_literal("localhost"),
                 PortConfig::new(3001)
             ),
             AllowedHostConfig::parse("http://localhost:3001").unwrap()
@@ -751,7 +782,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("192.168.1.1"),
+                HostConfig::unwrap_literal("192.168.1.1"),
                 PortConfig::new(80)
             ),
             AllowedHostConfig::parse("http://192.168.1.1").unwrap()
@@ -759,7 +790,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("192.168.1.1"),
+                HostConfig::unwrap_literal("192.168.1.1"),
                 PortConfig::new(3002)
             ),
             AllowedHostConfig::parse("http://192.168.1.1:3002").unwrap()
@@ -767,7 +798,7 @@ mod test {
         assert_eq!(
             AllowedHostConfig::new(
                 SchemeConfig::new("http"),
-                HostConfig::new("[::1]"),
+                HostConfig::unwrap_literal("[::1]"),
                 PortConfig::new(8001)
             ),
             AllowedHostConfig::parse("http://[::1]:8001").unwrap()
@@ -809,6 +840,19 @@ mod test {
         assert!(AllowedHostConfig::parse("http://spin.fermyon.dev/a").is_err());
         assert!(AllowedHostConfig::parse("http://spin.fermyon.dev:6666/a/b").is_err());
         assert!(AllowedHostConfig::parse("http://*.fermyon.dev/a").is_err());
+    }
+
+    #[test]
+    fn test_rejects_invalid_parts() {
+        for invalid in [
+            "h@x://localhost",
+            "http://invalid host",
+            "http://inv@lid-host",
+            "http://",
+            "http://:80",
+        ] {
+            AllowedHostConfig::parse(invalid).expect_err(invalid);
+        }
     }
 
     #[test]
