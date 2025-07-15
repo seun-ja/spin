@@ -121,6 +121,7 @@ pub struct UpCommand {
     /// All other args, to be passed through to the trigger
     #[clap(hide = true)]
     pub trigger_args: Vec<OsString>,
+    // TODO: add command to enable cpu usage
 }
 
 impl UpCommand {

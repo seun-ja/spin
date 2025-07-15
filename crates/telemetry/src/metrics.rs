@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use anyhow::{bail, Result};
-use opentelemetry::global;
+use opentelemetry::{global, metrics::MeterProvider as _, KeyValue};
 use opentelemetry_sdk::{
     metrics::{PeriodicReader, SdkMeterProvider},
     resource::{EnvResourceDetector, ResourceDetector, TelemetryResourceDetector},
     Resource,
 };
+use sysinfo::{Pid, System};
 use tracing::Subscriber;
 use tracing_opentelemetry::MetricsLayer;
 use tracing_subscriber::{registry::LookupSpan, Layer};
@@ -49,6 +52,47 @@ pub(crate) fn otel_metrics_layer<S: Subscriber + for<'span> LookupSpan<'span>>(
     let meter_provider = SdkMeterProvider::builder()
         .with_reader(reader)
         .with_resource(resource)
+        .build();
+
+    let mut sys = System::new_all();
+    let pid = std::process::id();
+
+    // Fetch up-to-date process information
+    sys.refresh_process(Pid::from(pid as usize));
+
+    let sys = Arc::new(sys);
+
+    let meter = meter_provider.meter("spin-meter");
+
+    // TODO: make it optional via env variable
+    let _memory_usage_gauge = meter
+        .f64_observable_gauge("process.memory.usage")
+        .with_description("Resident memory used by this process")
+        .with_unit("By") // "By": Bytes
+        .with_callback({
+            let sys = Arc::clone(&sys);
+            move |instrument| {
+                if let Some(process) = sys.process(Pid::from(pid as usize)) {
+                    let memory = process.memory() as f64;
+                    instrument.observe(memory, &[KeyValue::new("state", "rss")]);
+                }
+            }
+        })
+        .build();
+
+    let _cpu_time_gauge = meter
+        .f64_observable_gauge("process.cpu.time")
+        .with_description("Total CPU time used by this process")
+        .with_unit("s") // "s": seconds
+        .with_callback({
+            let sys = Arc::clone(&sys);
+            move |instrument| {
+                if let Some(process) = sys.process(Pid::from(pid as usize)) {
+                    let cpu_time = process.cpu_usage() as f64;
+                    instrument.observe(cpu_time, &[KeyValue::new("state", "user+system")]);
+                }
+            }
+        })
         .build();
 
     global::set_meter_provider(meter_provider.clone());
