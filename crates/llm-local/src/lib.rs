@@ -1,6 +1,5 @@
 mod bert;
 mod llama;
-mod open_ai;
 
 use anyhow::Context;
 use bert::{BertModel, Config};
@@ -30,7 +29,6 @@ pub struct LocalLlmEngine {
 #[derive(Debug)]
 enum InferencingModelArch {
     Llama,
-    _OpenAI,
 }
 
 impl FromStr for InferencingModelArch {
@@ -153,11 +151,6 @@ impl LocalLlmEngine {
                 let model: Arc<dyn InferencingModel> = match arch {
                     InferencingModelArch::Llama => Arc::new(
                         llama::LlamaModels::new(&model_dir)
-                            .await
-                            .map_err(|e| wasi_llm::Error::RuntimeError(e.to_string()))?,
-                    ),
-                    InferencingModelArch::_OpenAI => Arc::new(
-                        open_ai::OpenAIModels::new(&model_dir)
                             .await
                             .map_err(|e| wasi_llm::Error::RuntimeError(e.to_string()))?,
                     ),

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use spin_world::v2::llm::{self as wasi_llm};
 
+mod open_ai;
+
 #[derive(Clone)]
 pub struct RemoteHttpLlmEngine {
     auth_token: String,
