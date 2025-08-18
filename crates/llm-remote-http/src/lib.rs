@@ -100,13 +100,7 @@ impl RemoteHttpLlmEngine {
             })?;
 
         match resp.json::<InferResponseBody>().await {
-            Ok(val) => Ok(wasi_llm::InferencingResult {
-                text: val.text,
-                usage: wasi_llm::InferencingUsage {
-                    prompt_token_count: val.usage.prompt_token_count,
-                    generated_token_count: val.usage.generated_token_count,
-                },
-            }),
+            Ok(val) => Ok(val.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
                 "Failed to deserialize response for \"POST  /index\": {err}"
             ))),
@@ -151,12 +145,7 @@ impl RemoteHttpLlmEngine {
             })?;
 
         match resp.json::<EmbeddingResponseBody>().await {
-            Ok(val) => Ok(wasi_llm::EmbeddingsResult {
-                embeddings: val.embeddings,
-                usage: wasi_llm::EmbeddingsUsage {
-                    prompt_token_count: val.usage.prompt_token_count,
-                },
-            }),
+            Ok(val) => Ok(val.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
                 "Failed to deserialize response  for \"POST  /embed\": {err}"
             ))),
@@ -165,6 +154,29 @@ impl RemoteHttpLlmEngine {
 
     pub fn url(&self) -> Url {
         self.url.clone()
+    }
+}
+
+impl From<InferResponseBody> for wasi_llm::InferencingResult {
+    fn from(value: InferResponseBody) -> Self {
+        Self {
+            text: value.text,
+            usage: wasi_llm::InferencingUsage {
+                prompt_token_count: value.usage.prompt_token_count,
+                generated_token_count: value.usage.generated_token_count,
+            },
+        }
+    }
+}
+
+impl From<EmbeddingResponseBody> for wasi_llm::EmbeddingsResult {
+    fn from(value: EmbeddingResponseBody) -> Self {
+        Self {
+            embeddings: value.embeddings,
+            usage: wasi_llm::EmbeddingsUsage {
+                prompt_token_count: value.usage.prompt_token_count,
+            },
+        }
     }
 }
 
