@@ -7,7 +7,7 @@ use reqwest::{
 use serde::Serialize;
 use spin_world::v2::llm::{self as wasi_llm};
 
-use crate::InferResponseBody;
+use crate::{EmbeddingResponseBody, InferResponseBody};
 
 pub(crate) struct OpenAIAgentEngine;
 
@@ -43,11 +43,10 @@ impl OpenAIAgentEngine {
                 content: prompt,
             }],
             model: model.into(),
-            max_completion_tokens: todo!(),
-            frequency_penalty: Some(params.repeat_penalty), // TODO: change to frequency_penalty
-            reasoning_effort: todo!(),
-            audio: todo!(),
-            verbosity: todo!(),
+            max_completion_tokens: Some(params.max_tokens),
+            frequency_penalty: Some(params.repeat_penalty), // TODO: Joshua: change to frequency_penalty
+            reasoning_effort: Some(ReasoningEffort::Medium),
+            verbosity: Some(Verbosity::Low),
         };
 
         let resp = client
@@ -69,13 +68,52 @@ impl OpenAIAgentEngine {
     }
 
     pub async fn generate_embeddings(
-        _auth_token: &str,
-        _url: &Url,
-        mut _client: Option<Client>,
-        _model: wasi_llm::EmbeddingModel,
-        _data: Vec<String>,
+        auth_token: &str,
+        url: &Url,
+        mut client: Option<Client>,
+        model: wasi_llm::EmbeddingModel,
+        data: Vec<String>,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
-        todo!("What's an embedding?")
+        let client = client.get_or_insert_with(Default::default);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            HeaderValue::from_str(&format!("bearer {}", auth_token)).map_err(|_| {
+                wasi_llm::Error::RuntimeError("Failed to create authorization header".to_string())
+            })?,
+        );
+        spin_telemetry::inject_trace_context(&mut headers);
+
+        let body = CreateEmbeddingRequest {
+            input: data,
+            model: EmbeddingModel::Custom(model),
+            encoding_format: None,
+            dimensions: None,
+            user: None,
+        };
+
+        let resp = client
+            .request(
+                reqwest::Method::POST,
+                url.join("/embeddings").map_err(|_| {
+                    wasi_llm::Error::RuntimeError("Failed to create URL".to_string())
+                })?,
+            )
+            .headers(headers)
+            .body(body)
+            .send()
+            .await
+            .map_err(|err| {
+                wasi_llm::Error::RuntimeError(format!("POST /embed request error: {err}"))
+            })?;
+
+        match resp.json::<EmbeddingResponseBody>().await {
+            Ok(val) => Ok(val.into()),
+            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                "Failed to deserialize response  for \"POST  /embed\": {err}"
+            ))),
+        }
     }
 }
 
@@ -84,15 +122,13 @@ struct CreateChatCompletionRequest {
     messages: Vec<Message>,
     model: Model,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_completion_tokens: Option<u32>,
+    max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub frequency_penalty: Option<f32>,
+    frequency_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<ReasoningEffort>,
+    reasoning_effort: Option<ReasoningEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub audio: Option<AudioOptions>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub verbosity: Option<Verbosity>,
+    verbosity: Option<Verbosity>,
 }
 
 impl From<CreateChatCompletionRequest> for Body {
@@ -102,52 +138,27 @@ impl From<CreateChatCompletionRequest> for Body {
 }
 
 #[derive(Serialize, Debug)]
-pub struct AudioOptions {
-    pub voice: String,
-    pub format: String,
-}
-
-#[derive(Serialize, Debug)]
 enum Verbosity {
     Low,
-    Medium,
-    High,
+    _Medium,
+    _High,
 }
 
 #[derive(Serialize, Debug)]
 enum ReasoningEffort {
-    Minimal,
-    Low,
+    _Minimal,
+    _Low,
     Medium,
-    High,
+    _High,
 }
 
 impl Display for ReasoningEffort {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReasoningEffort::Minimal => write!(f, "minimal"),
-            ReasoningEffort::Low => write!(f, "low"),
+            ReasoningEffort::_Minimal => write!(f, "minimal"),
+            ReasoningEffort::_Low => write!(f, "low"),
             ReasoningEffort::Medium => write!(f, "medium"),
-            ReasoningEffort::High => write!(f, "high"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-enum InputType {
-    Text,
-    Audio,
-    Image,
-    Video,
-}
-
-impl Display for InputType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InputType::Text => write!(f, "text"),
-            InputType::Audio => write!(f, "audio"),
-            InputType::Image => write!(f, "image"),
-            InputType::Video => write!(f, "video"),
+            ReasoningEffort::_High => write!(f, "high"),
         }
     }
 }
@@ -221,19 +232,71 @@ struct Message {
 
 #[derive(Serialize, Debug)]
 enum Role {
-    System,
+    _System,
     User,
-    Assistant,
-    Tool,
+    _Assistant,
+    _Tool,
 }
 
 impl Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Role::System => write!(f, "system"),
+            Role::_System => write!(f, "system"),
             Role::User => write!(f, "user"),
-            Role::Assistant => write!(f, "assistant"),
-            Role::Tool => write!(f, "tool"),
+            Role::_Assistant => write!(f, "assistant"),
+            Role::_Tool => write!(f, "tool"),
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct CreateEmbeddingRequest {
+    input: Vec<String>,
+    model: EmbeddingModel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoding_format: Option<EncodingFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dimensions: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user: Option<String>,
+}
+
+impl From<CreateEmbeddingRequest> for Body {
+    fn from(val: CreateEmbeddingRequest) -> Self {
+        Body::from(serde_json::to_string(&val).unwrap())
+    }
+}
+
+#[derive(Serialize, Debug)]
+enum EncodingFormat {
+    _Float,
+    _Base64,
+}
+
+impl Display for EncodingFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncodingFormat::_Float => write!(f, "float"),
+            EncodingFormat::_Base64 => write!(f, "base64"),
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+enum EmbeddingModel {
+    _TextEmbeddingAda002,
+    _TextEmbedding3Small,
+    _TextEmbedding3Large,
+    Custom(String),
+}
+
+impl Display for EmbeddingModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EmbeddingModel::_TextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
+            EmbeddingModel::_TextEmbedding3Small => write!(f, "text-embedding-3-small"),
+            EmbeddingModel::_TextEmbedding3Large => write!(f, "text-embedding-3-large"),
+            EmbeddingModel::Custom(model) => write!(f, "{model}"),
         }
     }
 }
