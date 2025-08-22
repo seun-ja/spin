@@ -7,6 +7,7 @@ use crate::{default::DefaultAgentEngine, open_ai::OpenAIAgentEngine};
 
 mod default;
 mod open_ai;
+mod schema;
 
 #[derive(Clone)]
 pub enum Agent {

@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 use reqwest::{
     header::{HeaderMap, HeaderValue},
     Body, Client, Url,
@@ -7,7 +5,10 @@ use reqwest::{
 use serde::Serialize;
 use spin_world::v2::llm::{self as wasi_llm};
 
-use crate::{EmbeddingResponseBody, InferResponseBody};
+use crate::{
+    schema::{EmbeddingModels, EncodingFormat, Message, Model, Role},
+    EmbeddingResponseBody, InferResponseBody,
+};
 
 pub(crate) struct OpenAIAgentEngine;
 
@@ -38,15 +39,13 @@ impl OpenAIAgentEngine {
         tracing::info!("Sending remote inference request to {chat_url}");
 
         let body = CreateChatCompletionRequest {
-            messages: vec![Message {
-                role: Role::User, // TODO: Joshua: make customizable
-                content: prompt,
-            }],
-            model: model.into(),
+            // TODO: Joshua: make Role customizable
+            messages: vec![Message::new(Role::User, prompt)],
+            model: model.as_str().try_into()?,
             max_completion_tokens: Some(params.max_tokens),
             frequency_penalty: Some(params.repeat_penalty), // TODO: Joshua: change to frequency_penalty
-            reasoning_effort: Some(ReasoningEffort::Medium),
-            verbosity: Some(Verbosity::Low),
+            reasoning_effort: None,
+            verbosity: None,
         };
 
         let resp = client
@@ -87,7 +86,7 @@ impl OpenAIAgentEngine {
 
         let body = CreateEmbeddingRequest {
             input: data,
-            model: EmbeddingModel::Custom(model),
+            model: model.as_str().try_into()?,
             encoding_format: None,
             dimensions: None,
             user: None,
@@ -126,9 +125,9 @@ struct CreateChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     frequency_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    reasoning_effort: Option<ReasoningEffort>,
+    reasoning_effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    verbosity: Option<Verbosity>,
+    verbosity: Option<String>,
 }
 
 impl From<CreateChatCompletionRequest> for Body {
@@ -138,121 +137,9 @@ impl From<CreateChatCompletionRequest> for Body {
 }
 
 #[derive(Serialize, Debug)]
-enum Verbosity {
-    Low,
-    _Medium,
-    _High,
-}
-
-#[derive(Serialize, Debug)]
-enum ReasoningEffort {
-    _Minimal,
-    _Low,
-    Medium,
-    _High,
-}
-
-impl Display for ReasoningEffort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReasoningEffort::_Minimal => write!(f, "minimal"),
-            ReasoningEffort::_Low => write!(f, "low"),
-            ReasoningEffort::Medium => write!(f, "medium"),
-            ReasoningEffort::_High => write!(f, "high"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-enum Model {
-    GPT5,
-    GPT5Mini,
-    GPT5Nano,
-    GPT5Chat,
-    GPT45,
-    GPT41,
-    GPT41Mini,
-    GPT41Nano,
-    GPT4,
-    GPT4o,
-    GPT4oMini,
-    O4Mini,
-    O3,
-    O1,
-}
-
-impl From<String> for Model {
-    fn from(value: String) -> Self {
-        match value.as_str() {
-            "gpt-5" => Model::GPT5,
-            "gpt-5-mini" => Model::GPT5Mini,
-            "gpt-5-nano" => Model::GPT5Nano,
-            "gpt-5-chat" => Model::GPT5Chat,
-            "gpt-4.5" => Model::GPT45,
-            "gpt-4.1" => Model::GPT41,
-            "gpt-4.1-mini" => Model::GPT41Mini,
-            "gpt-4.1-nano" => Model::GPT41Nano,
-            "gpt-4" => Model::GPT4,
-            "gpt-4o" => Model::GPT4o,
-            "gpt-4o-mini" => Model::GPT4oMini,
-            "o4-mini" => Model::O4Mini,
-            "o3" => Model::O3,
-            "o1" => Model::O1,
-            _ => Model::GPT4,
-        }
-    }
-}
-
-impl Display for Model {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Model::GPT5 => write!(f, "gpt-5"),
-            Model::GPT5Mini => write!(f, "gpt-5-mini"),
-            Model::GPT5Nano => write!(f, "gpt-5-nano"),
-            Model::GPT5Chat => write!(f, "gpt-5-chat"),
-            Model::GPT45 => write!(f, "gpt-4.5"),
-            Model::GPT41 => write!(f, "gpt-4.1"),
-            Model::GPT41Mini => write!(f, "gpt-4.1-mini"),
-            Model::GPT41Nano => write!(f, "gpt-4.1-nano"),
-            Model::GPT4 => write!(f, "gpt-4"),
-            Model::GPT4o => write!(f, "gpt-4o"),
-            Model::GPT4oMini => write!(f, "gpt-4o-mini"),
-            Model::O4Mini => write!(f, "o4-mini"),
-            Model::O3 => write!(f, "o3"),
-            Model::O1 => write!(f, "o1"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-struct Message {
-    role: Role,
-    content: String,
-}
-
-#[derive(Serialize, Debug)]
-enum Role {
-    _System,
-    User,
-    _Assistant,
-    _Tool,
-}
-
-impl Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::_System => write!(f, "system"),
-            Role::User => write!(f, "user"),
-            Role::_Assistant => write!(f, "assistant"),
-            Role::_Tool => write!(f, "tool"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
 pub struct CreateEmbeddingRequest {
     input: Vec<String>,
-    model: EmbeddingModel,
+    model: EmbeddingModels,
     #[serde(skip_serializing_if = "Option::is_none")]
     encoding_format: Option<EncodingFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -264,39 +151,5 @@ pub struct CreateEmbeddingRequest {
 impl From<CreateEmbeddingRequest> for Body {
     fn from(val: CreateEmbeddingRequest) -> Self {
         Body::from(serde_json::to_string(&val).unwrap())
-    }
-}
-
-#[derive(Serialize, Debug)]
-enum EncodingFormat {
-    _Float,
-    _Base64,
-}
-
-impl Display for EncodingFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EncodingFormat::_Float => write!(f, "float"),
-            EncodingFormat::_Base64 => write!(f, "base64"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug)]
-enum EmbeddingModel {
-    _TextEmbeddingAda002,
-    _TextEmbedding3Small,
-    _TextEmbedding3Large,
-    Custom(String),
-}
-
-impl Display for EmbeddingModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EmbeddingModel::_TextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
-            EmbeddingModel::_TextEmbedding3Small => write!(f, "text-embedding-3-small"),
-            EmbeddingModel::_TextEmbedding3Large => write!(f, "text-embedding-3-large"),
-            EmbeddingModel::Custom(model) => write!(f, "{model}"),
-        }
     }
 }
