@@ -3,7 +3,11 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use spin_world::v2::llm::{self as wasi_llm};
 
-use crate::{default::DefaultAgentEngine, open_ai::OpenAIAgentEngine};
+use crate::{
+    default::DefaultAgentEngine,
+    open_ai::OpenAIAgentEngine,
+    schema::{ChatCompletionChoice, Embedding},
+};
 
 mod default;
 mod open_ai;
@@ -25,9 +29,9 @@ pub enum Agent {
 }
 
 impl Agent {
-    pub fn from(url: Url, auth_token: String, agent: Option<String>) -> Self {
+    pub fn from(url: Url, auth_token: String, agent: Option<CustomLlm>) -> Self {
         match agent {
-            Some(agent_name) if agent_name == *"open_ai" => Agent::OpenAI {
+            Some(CustomLlm::OpenAi) => Agent::OpenAI {
                 auth_token,
                 url,
                 client: None,
@@ -71,6 +75,23 @@ struct InferResponseBody {
 }
 
 #[derive(Deserialize)]
+struct CreateChatCompletionResponse {
+    _id: String,
+    _object: String,
+    _created: u64,
+    _model: String,
+    choices: Vec<ChatCompletionChoice>,
+    usage: CompletionUsage,
+}
+
+#[derive(Deserialize)]
+struct CompletionUsage {
+    completion_tokens: u32,
+    prompt_tokens: u32,
+    _total_tokens: u32,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
 struct EmbeddingUsage {
     prompt_token_count: u32,
@@ -82,8 +103,31 @@ struct EmbeddingResponseBody {
     usage: EmbeddingUsage,
 }
 
+#[derive(Deserialize)]
+struct CreateEmbeddingResponse {
+    _object: String,
+    _model: String,
+    data: Vec<Embedding>,
+    usage: OpenAIEmbeddingUsage,
+}
+
+impl CreateEmbeddingResponse {
+    fn embeddings(&self) -> Vec<Vec<f32>> {
+        self.data
+            .iter()
+            .map(|embedding| embedding.embedding.clone())
+            .collect()
+    }
+}
+
+#[derive(Deserialize)]
+struct OpenAIEmbeddingUsage {
+    prompt_tokens: u32,
+    _total_tokens: u32,
+}
+
 impl RemoteHttpLlmEngine {
-    pub fn new(url: Url, auth_token: String, agent: Option<String>) -> Self {
+    pub fn new(url: Url, auth_token: String, agent: Option<CustomLlm>) -> Self {
         RemoteHttpLlmEngine {
             agent: Agent::from(url, auth_token, agent),
         }
@@ -166,6 +210,18 @@ impl From<InferResponseBody> for wasi_llm::InferencingResult {
     }
 }
 
+impl From<CreateChatCompletionResponse> for wasi_llm::InferencingResult {
+    fn from(value: CreateChatCompletionResponse) -> Self {
+        Self {
+            text: value.choices[0].message.content.clone(),
+            usage: wasi_llm::InferencingUsage {
+                prompt_token_count: value.usage.prompt_tokens,
+                generated_token_count: value.usage.completion_tokens,
+            },
+        }
+    }
+}
+
 impl From<EmbeddingResponseBody> for wasi_llm::EmbeddingsResult {
     fn from(value: EmbeddingResponseBody) -> Self {
         Self {
@@ -173,6 +229,33 @@ impl From<EmbeddingResponseBody> for wasi_llm::EmbeddingsResult {
             usage: wasi_llm::EmbeddingsUsage {
                 prompt_token_count: value.usage.prompt_token_count,
             },
+        }
+    }
+}
+
+impl From<CreateEmbeddingResponse> for wasi_llm::EmbeddingsResult {
+    fn from(value: CreateEmbeddingResponse) -> Self {
+        Self {
+            embeddings: value.embeddings(),
+            usage: wasi_llm::EmbeddingsUsage {
+                prompt_token_count: value.usage.prompt_tokens,
+            },
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize, PartialEq)]
+pub enum CustomLlm {
+    OpenAi,
+}
+
+impl TryFrom<&str> for CustomLlm {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.to_lowercase().as_str() {
+            "open_ai" | "openai" => Ok(CustomLlm::OpenAi),
+            _ => Err(anyhow::anyhow!("Invalid custom LLM: {}", value)),
         }
     }
 }

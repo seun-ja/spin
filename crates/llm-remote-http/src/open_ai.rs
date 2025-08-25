@@ -6,8 +6,8 @@ use serde::Serialize;
 use spin_world::v2::llm::{self as wasi_llm};
 
 use crate::{
-    schema::{EmbeddingModels, EncodingFormat, Message, Model, Role},
-    EmbeddingResponseBody, InferResponseBody,
+    schema::{EmbeddingModels, EncodingFormat, Model, Prompt, Role},
+    CreateChatCompletionResponse, EmbeddingResponseBody,
 };
 
 pub(crate) struct OpenAIAgentEngine;
@@ -39,11 +39,11 @@ impl OpenAIAgentEngine {
         tracing::info!("Sending remote inference request to {chat_url}");
 
         let body = CreateChatCompletionRequest {
-            // TODO: Joshua: make Role customizable
-            messages: vec![Message::new(Role::User, prompt)],
+            // TODO: Make Role customizable
+            messages: vec![Prompt::new(Role::User, prompt)],
             model: model.as_str().try_into()?,
             max_completion_tokens: Some(params.max_tokens),
-            frequency_penalty: Some(params.repeat_penalty), // TODO: Joshua: change to frequency_penalty
+            frequency_penalty: Some(params.repeat_penalty),
             reasoning_effort: None,
             verbosity: None,
         };
@@ -58,7 +58,7 @@ impl OpenAIAgentEngine {
                 wasi_llm::Error::RuntimeError(format!("POST /infer request error: {err}"))
             })?;
 
-        match resp.json::<InferResponseBody>().await {
+        match resp.json::<CreateChatCompletionResponse>().await {
             Ok(val) => Ok(val.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
                 "Failed to deserialize response for \"POST  /index\": {err}"
@@ -118,7 +118,7 @@ impl OpenAIAgentEngine {
 
 #[derive(Serialize, Debug)]
 struct CreateChatCompletionRequest {
-    messages: Vec<Message>,
+    messages: Vec<Prompt>,
     model: Model,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_completion_tokens: Option<u32>,
