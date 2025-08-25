@@ -1,24 +1,36 @@
-use std::fmt::Display;
-
 use serde::{Deserialize, Serialize};
 use spin_world::v2::llm as wasi_llm;
 
 /// LLM model
 #[derive(Serialize, Debug)]
 pub enum Model {
+    #[serde(rename = "gpt-5")]
     GPT5,
+    #[serde(rename = "gpt-5-mini")]
     GPT5Mini,
+    #[serde(rename = "gpt-5-nano")]
     GPT5Nano,
+    #[serde(rename = "gpt-5-chat")]
     GPT5Chat,
+    #[serde(rename = "gpt-4.5")]
     GPT45,
+    #[serde(rename = "gpt-4.1")]
     GPT41,
+    #[serde(rename = "gpt-4.1-mini")]
     GPT41Mini,
+    #[serde(rename = "gpt-4.1-nano")]
     GPT41Nano,
+    #[serde(rename = "gpt-4")]
     GPT4,
+    #[serde(rename = "gpt-4o")]
     GPT4o,
+    #[serde(rename = "gpt-4o-mini")]
     GPT4oMini,
+    #[serde(rename = "o4-mini")]
     O4Mini,
+    #[serde(rename = "o3")]
     O3,
+    #[serde(rename = "o1")]
     O1,
 }
 
@@ -48,27 +60,6 @@ impl TryFrom<&str> for Model {
     }
 }
 
-impl Display for Model {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Model::GPT5 => write!(f, "gpt-5"),
-            Model::GPT5Mini => write!(f, "gpt-5-mini"),
-            Model::GPT5Nano => write!(f, "gpt-5-nano"),
-            Model::GPT5Chat => write!(f, "gpt-5-chat"),
-            Model::GPT45 => write!(f, "gpt-4.5"),
-            Model::GPT41 => write!(f, "gpt-4.1"),
-            Model::GPT41Mini => write!(f, "gpt-4.1-mini"),
-            Model::GPT41Nano => write!(f, "gpt-4.1-nano"),
-            Model::GPT4 => write!(f, "gpt-4"),
-            Model::GPT4o => write!(f, "gpt-4o"),
-            Model::GPT4oMini => write!(f, "gpt-4o-mini"),
-            Model::O4Mini => write!(f, "o4-mini"),
-            Model::O3 => write!(f, "o3"),
-            Model::O1 => write!(f, "o1"),
-        }
-    }
-}
-
 #[derive(Serialize, Debug)]
 pub struct Prompt {
     role: Role,
@@ -83,21 +74,14 @@ impl Prompt {
 
 #[derive(Serialize, Debug)]
 pub enum Role {
+    #[serde(rename = "system")]
     System,
+    #[serde(rename = "user")]
     User,
+    #[serde(rename = "assistant")]
     Assistant,
+    #[serde(rename = "tool")]
     Tool,
-}
-
-impl Display for Role {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Role::System => write!(f, "system"),
-            Role::User => write!(f, "user"),
-            Role::Assistant => write!(f, "assistant"),
-            Role::Tool => write!(f, "tool"),
-        }
-    }
 }
 
 impl TryFrom<&str> for Role {
@@ -118,17 +102,10 @@ impl TryFrom<&str> for Role {
 
 #[derive(Serialize, Debug)]
 pub enum EncodingFormat {
+    #[serde(rename = "float")]
     Float,
+    #[serde(rename = "base64")]
     Base64,
-}
-
-impl Display for EncodingFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EncodingFormat::Float => write!(f, "float"),
-            EncodingFormat::Base64 => write!(f, "base64"),
-        }
-    }
 }
 
 impl TryFrom<&str> for EncodingFormat {
@@ -147,21 +124,13 @@ impl TryFrom<&str> for EncodingFormat {
 
 #[derive(Serialize, Debug)]
 pub enum EmbeddingModels {
+    #[serde(rename = "text-embedding-ada-002")]
     TextEmbeddingAda002,
+    #[serde(rename = "text-embedding-3-small")]
     TextEmbedding3Small,
+    #[serde(rename = "text-embedding-3-large")]
     TextEmbedding3Large,
     Custom(String),
-}
-
-impl Display for EmbeddingModels {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EmbeddingModels::TextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
-            EmbeddingModels::TextEmbedding3Small => write!(f, "text-embedding-3-small"),
-            EmbeddingModels::TextEmbedding3Large => write!(f, "text-embedding-3-large"),
-            EmbeddingModels::Custom(model) => write!(f, "{model}"),
-        }
-    }
 }
 
 impl TryFrom<&str> for EmbeddingModels {
@@ -179,21 +148,14 @@ impl TryFrom<&str> for EmbeddingModels {
 
 #[derive(Serialize, Debug)]
 enum ReasoningEffort {
+    #[serde(rename = "minimal")]
     Minimal,
+    #[serde(rename = "low")]
     Low,
+    #[serde(rename = "medium")]
     Medium,
+    #[serde(rename = "high")]
     High,
-}
-
-impl Display for ReasoningEffort {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReasoningEffort::Minimal => write!(f, "minimal"),
-            ReasoningEffort::Low => write!(f, "low"),
-            ReasoningEffort::Medium => write!(f, "medium"),
-            ReasoningEffort::High => write!(f, "high"),
-        }
-    }
 }
 
 impl TryFrom<&str> for ReasoningEffort {
@@ -236,13 +198,16 @@ impl TryFrom<&str> for Verbosity {
 
 #[derive(Deserialize)]
 pub struct ChatCompletionChoice {
+    #[serde(rename = "index")]
     /// The index of the choice in the list of choices
     _index: u32,
     pub message: ChatCompletionResponseMessage,
     /// The reason the model stopped generating tokens. This will be `stop` if the model hit a
     /// natural stop point or a provided stop sequence,
+    #[serde(rename = "finish_reason")]
     _finish_reason: String,
     /// Log probability information for the choice.
+    #[serde(rename = "logprobs")]
     _logprobs: Option<Logprobs>,
 }
 
@@ -250,28 +215,51 @@ pub struct ChatCompletionChoice {
 /// A chat completion message generated by the model.
 pub struct ChatCompletionResponseMessage {
     /// The role of the author of this message
+    #[serde(rename = "role")]
     _role: String,
     /// The contents of the message
     pub content: String,
     /// The refusal message generated by the model
+    #[serde(rename = "refusal")]
     _refusal: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct Logprobs {
     /// A list of message content tokens with log probability information.
+    #[serde(rename = "content")]
     _content: Option<Vec<String>>,
     /// A list of message refusal tokens with log probability information.
+    #[serde(rename = "refusal")]
     _refusal: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 pub struct Embedding {
     /// The index of the embedding in the list of embeddings..
+    #[serde(rename = "index")]
     _index: u32,
     /// The embedding vector, which is a list of floats. The length of vector depends on the model as
     /// listed in the [embedding guide](https://platform.openai.com/docs/guides/embeddings).
     pub embedding: Vec<f32>,
     /// The object type, which is always "embedding"
+    #[serde(rename = "object")]
     _object: String,
+}
+
+#[derive(Deserialize, Default)]
+pub struct ResponseError {
+    pub message: String,
+    #[serde(rename = "type")]
+    _t: String,
+    #[serde(rename = "param")]
+    _param: Option<String>,
+    #[serde(rename = "code")]
+    _code: String,
+}
+
+impl From<ResponseError> for wasi_llm::Error {
+    fn from(value: ResponseError) -> Self {
+        wasi_llm::Error::RuntimeError(value.message)
+    }
 }

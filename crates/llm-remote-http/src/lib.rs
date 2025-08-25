@@ -76,11 +76,17 @@ struct InferResponseBody {
 
 #[derive(Deserialize)]
 struct CreateChatCompletionResponse {
+    #[serde(rename = "id")]
     _id: String,
+    #[serde(rename = "object")]
     _object: String,
+    #[serde(rename = "created")]
     _created: u64,
+    #[serde(rename = "model")]
     _model: String,
+    #[serde(rename = "choices")]
     choices: Vec<ChatCompletionChoice>,
+    #[serde(rename = "usage")]
     usage: CompletionUsage,
 }
 
