@@ -6,7 +6,7 @@ use serde::Serialize;
 use spin_world::v2::llm::{self as wasi_llm};
 
 use crate::{
-    schema::{EmbeddingModels, EncodingFormat, Model, Prompt, ResponseError, Role},
+    schema::{EncodingFormat, Prompt, ResponseError, Role},
     CreateChatCompletionResponse, CreateEmbeddingResponse,
 };
 
@@ -41,7 +41,7 @@ impl OpenAIAgentEngine {
         let body = CreateChatCompletionRequest {
             // TODO: Make Role customizable
             messages: vec![Prompt::new(Role::User, prompt)],
-            model: model.as_str().try_into()?,
+            model,
             max_completion_tokens: Some(params.max_tokens),
             frequency_penalty: Some(params.repeat_penalty),
             reasoning_effort: None,
@@ -55,14 +55,16 @@ impl OpenAIAgentEngine {
             .send()
             .await
             .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!("POST /infer request error: {err}"))
+                wasi_llm::Error::RuntimeError(format!(
+                    "POST /v1/chat/completions request error: {err}"
+                ))
             })?;
 
         match resp.json::<CreateChatCompletionResponses>().await {
             Ok(CreateChatCompletionResponses::Success(val)) => Ok(val.into()),
             Ok(CreateChatCompletionResponses::Error { error }) => Err(error.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response for \"POST  /index\": {err}"
+                "Failed to deserialize response for \"POST  /v1/chat/completions\": {err}"
             ))),
         }
     }
@@ -87,32 +89,33 @@ impl OpenAIAgentEngine {
 
         let body = CreateEmbeddingRequest {
             input: data,
-            model: model.as_str().try_into()?,
+            model,
             encoding_format: None,
             dimensions: None,
             user: None,
         };
 
+        let chat_url = url
+            .join("/v1/embeddings")
+            .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
+
+        tracing::info!("Sending remote embedding request to {chat_url}");
+
         let resp = client
-            .request(
-                reqwest::Method::POST,
-                url.join("/v1/embeddings").map_err(|_| {
-                    wasi_llm::Error::RuntimeError("Failed to create URL".to_string())
-                })?,
-            )
+            .request(reqwest::Method::POST, chat_url)
             .headers(headers)
             .json(&body)
             .send()
             .await
             .map_err(|err| {
-                wasi_llm::Error::RuntimeError(format!("POST /embed request error: {err}"))
+                wasi_llm::Error::RuntimeError(format!("POST /v1/embeddings request error: {err}"))
             })?;
 
         match resp.json::<CreateEmbeddingResponses>().await {
             Ok(CreateEmbeddingResponses::Success(val)) => Ok(val.into()),
             Ok(CreateEmbeddingResponses::Error { error }) => Err(error.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response  for \"POST  /embed\": {err}"
+                "Failed to deserialize response  for \"POST  /v1/embeddings\": {err}"
             ))),
         }
     }
@@ -121,7 +124,7 @@ impl OpenAIAgentEngine {
 #[derive(Serialize, Debug)]
 struct CreateChatCompletionRequest {
     messages: Vec<Prompt>,
-    model: Model,
+    model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_completion_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -135,7 +138,7 @@ struct CreateChatCompletionRequest {
 #[derive(Serialize, Debug)]
 pub struct CreateEmbeddingRequest {
     input: Vec<String>,
-    model: EmbeddingModels,
+    model: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     encoding_format: Option<EncodingFormat>,
     #[serde(skip_serializing_if = "Option::is_none")]

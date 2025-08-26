@@ -76,24 +76,38 @@ struct InferResponseBody {
 
 #[derive(Deserialize)]
 struct CreateChatCompletionResponse {
+    /// A unique identifier for the chat completion.
     #[serde(rename = "id")]
     _id: String,
+    /// The object type, which is always `chat.completion`.
     #[serde(rename = "object")]
     _object: String,
+    /// The Unix timestamp (in seconds) of when the chat completion was created.
     #[serde(rename = "created")]
     _created: u64,
+    /// The model used for the chat completion.
     #[serde(rename = "model")]
     _model: String,
-    #[serde(rename = "choices")]
+    /// This fingerprint represents the backend configuration that the model runs with.
+    ///
+    /// While it's deprecated, it's still provided for compatibility with older clients.
+    #[serde(rename = "system_fingerprint")]
+    _system_fingerprint: Option<String>,
+    /// A list of chat completion choices. Can be more than one if `n` is greater than 1.
     choices: Vec<ChatCompletionChoice>,
+    /// Usage statistics for the completion request
     #[serde(rename = "usage")]
     usage: CompletionUsage,
 }
 
 #[derive(Deserialize)]
 struct CompletionUsage {
+    /// Number of tokens in the generated completion.
     completion_tokens: u32,
+    /// Number of tokens in the prompt.
     prompt_tokens: u32,
+    /// Total number of tokens used in the request (prompt + completion).
+    #[serde(rename = "total_tokens")]
     _total_tokens: u32,
 }
 
@@ -111,7 +125,9 @@ struct EmbeddingResponseBody {
 
 #[derive(Deserialize)]
 struct CreateEmbeddingResponse {
+    #[serde(rename = "object")]
     _object: String,
+    #[serde(rename = "model")]
     _model: String,
     data: Vec<Embedding>,
     usage: OpenAIEmbeddingUsage,
@@ -129,6 +145,7 @@ impl CreateEmbeddingResponse {
 #[derive(Deserialize)]
 struct OpenAIEmbeddingUsage {
     prompt_tokens: u32,
+    #[serde(rename = "total_tokens")]
     _total_tokens: u32,
 }
 
@@ -252,6 +269,7 @@ impl From<CreateEmbeddingResponse> for wasi_llm::EmbeddingsResult {
 
 #[derive(Debug, serde::Deserialize, PartialEq)]
 pub enum CustomLlm {
+    /// Compatible with OpenAI's API alongside some other LLMs
     OpenAi,
 }
 
