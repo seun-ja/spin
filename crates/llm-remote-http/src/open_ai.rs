@@ -77,12 +77,7 @@ impl LlmWorker for OpenAIAgentEngine {
                 ))
             })?;
 
-        let resp = resp.text().await.unwrap();
-
-        tracing::info!("Received response: {}", resp);
-
-        match serde_json::from_str::<CreateChatCompletionResponses>(&resp) {
-            // match resp.json::<CreateChatCompletionResponses>().await {
+        match resp.json::<CreateChatCompletionResponses>().await {
             Ok(CreateChatCompletionResponses::Success(val)) => Ok(val.into()),
             Ok(CreateChatCompletionResponses::Error { error }) => Err(error.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
