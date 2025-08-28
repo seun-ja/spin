@@ -3,37 +3,54 @@ use reqwest::{
     Client, Url,
 };
 use serde::Serialize;
-use spin_world::v2::llm::{self as wasi_llm};
+use spin_world::{
+    async_trait,
+    v2::llm::{self as wasi_llm},
+};
 
 use crate::{
     schema::{EncodingFormat, Prompt, ResponseError, Role},
-    CreateChatCompletionResponse, CreateEmbeddingResponse,
+    CreateChatCompletionResponse, CreateEmbeddingResponse, LlmWorker,
 };
 
-pub(crate) struct OpenAIAgentEngine;
+pub(crate) struct OpenAIAgentEngine {
+    auth_token: String,
+    url: Url,
+    client: Option<Client>,
+}
 
 impl OpenAIAgentEngine {
-    pub async fn infer(
-        auth_token: &String,
-        url: &Url,
-        mut client: Option<Client>,
+    pub fn new(auth_token: String, url: Url, client: Option<Client>) -> Self {
+        Self {
+            auth_token,
+            url,
+            client,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmWorker for OpenAIAgentEngine {
+    async fn infer(
+        &mut self,
         model: wasi_llm::InferencingModel,
         prompt: String,
         params: wasi_llm::InferencingParams,
     ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
-        let client = client.get_or_insert_with(Default::default);
+        let client = self.client.get_or_insert_with(Default::default);
 
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            HeaderValue::from_str(&format!("bearer {}", auth_token)).map_err(|_| {
+            HeaderValue::from_str(&format!("bearer {}", self.auth_token)).map_err(|_| {
                 wasi_llm::Error::RuntimeError("Failed to create authorization header".to_string())
             })?,
         );
         spin_telemetry::inject_trace_context(&mut headers);
 
-        let chat_url = url
-            .join("/v1/chat/completions")
+        let chat_url = self
+            .url
+            .join("/api/generate")
             .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
 
         tracing::info!("Sending remote inference request to {chat_url}");
@@ -60,7 +77,12 @@ impl OpenAIAgentEngine {
                 ))
             })?;
 
-        match resp.json::<CreateChatCompletionResponses>().await {
+        let resp = resp.text().await.unwrap();
+
+        tracing::info!("Received response: {}", resp);
+
+        match serde_json::from_str::<CreateChatCompletionResponses>(&resp) {
+            // match resp.json::<CreateChatCompletionResponses>().await {
             Ok(CreateChatCompletionResponses::Success(val)) => Ok(val.into()),
             Ok(CreateChatCompletionResponses::Error { error }) => Err(error.into()),
             Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
@@ -69,19 +91,17 @@ impl OpenAIAgentEngine {
         }
     }
 
-    pub async fn generate_embeddings(
-        auth_token: &str,
-        url: &Url,
-        mut client: Option<Client>,
+    async fn generate_embeddings(
+        &mut self,
         model: wasi_llm::EmbeddingModel,
         data: Vec<String>,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
-        let client = client.get_or_insert_with(Default::default);
+        let client = self.client.get_or_insert_with(Default::default);
 
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            HeaderValue::from_str(&format!("bearer {}", auth_token)).map_err(|_| {
+            HeaderValue::from_str(&format!("bearer {}", self.auth_token)).map_err(|_| {
                 wasi_llm::Error::RuntimeError("Failed to create authorization header".to_string())
             })?,
         );
@@ -95,7 +115,8 @@ impl OpenAIAgentEngine {
             user: None,
         };
 
-        let chat_url = url
+        let chat_url = self
+            .url
             .join("/v1/embeddings")
             .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
 
@@ -118,6 +139,10 @@ impl OpenAIAgentEngine {
                 "Failed to deserialize response  for \"POST  /v1/embeddings\": {err}"
             ))),
         }
+    }
+
+    fn url(&self) -> Url {
+        self.url.clone()
     }
 }
 

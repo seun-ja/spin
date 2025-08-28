@@ -1,53 +1,47 @@
 use anyhow::Result;
-use reqwest::{Client, Url};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use spin_world::v2::llm::{self as wasi_llm};
-
-use crate::{
-    default::DefaultAgentEngine,
-    open_ai::OpenAIAgentEngine,
-    schema::{ChatCompletionChoice, Embedding},
+use spin_world::{
+    async_trait,
+    v2::llm::{self as wasi_llm},
 };
+
+use crate::schema::{ChatCompletionChoice, Embedding};
 
 mod default;
 mod open_ai;
 mod schema;
 
-#[derive(Clone)]
-pub enum Agent {
-    //TODO: Joshua: Naming??!
-    Default {
-        auth_token: String,
-        url: Url,
-        client: Option<Client>,
-    },
-    OpenAI {
-        auth_token: String,
-        url: Url,
-        client: Option<Client>,
-    },
+pub struct RemoteHttpLlmEngine {
+    worker: Box<dyn LlmWorker>,
 }
 
-impl Agent {
-    pub fn from(url: Url, auth_token: String, agent: Option<CustomLlm>) -> Self {
-        match agent {
-            Some(CustomLlm::OpenAi) => Agent::OpenAI {
-                auth_token,
-                url,
-                client: None,
-            },
-            _ => Agent::Default {
-                auth_token,
-                url,
-                client: None,
-            },
-        }
+impl RemoteHttpLlmEngine {
+    pub fn new(url: Url, auth_token: String, custom_llm: CustomLlm) -> Self {
+        let worker: Box<dyn LlmWorker> = match custom_llm {
+            CustomLlm::OpenAi => Box::new(open_ai::OpenAIAgentEngine::new(auth_token, url, None)),
+            CustomLlm::Default => Box::new(default::DefaultAgentEngine::new(auth_token, url, None)),
+        };
+        Self { worker }
     }
 }
 
-#[derive(Clone)]
-pub struct RemoteHttpLlmEngine {
-    agent: Agent,
+#[async_trait]
+pub trait LlmWorker: Send + Sync {
+    async fn infer(
+        &mut self,
+        model: wasi_llm::InferencingModel,
+        prompt: String,
+        params: wasi_llm::InferencingParams,
+    ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error>;
+
+    async fn generate_embeddings(
+        &mut self,
+        model: wasi_llm::EmbeddingModel,
+        data: Vec<String>,
+    ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error>;
+
+    fn url(&self) -> Url;
 }
 
 #[derive(Serialize)]
@@ -150,36 +144,13 @@ struct OpenAIEmbeddingUsage {
 }
 
 impl RemoteHttpLlmEngine {
-    pub fn new(url: Url, auth_token: String, agent: Option<CustomLlm>) -> Self {
-        RemoteHttpLlmEngine {
-            agent: Agent::from(url, auth_token, agent),
-        }
-    }
-
     pub async fn infer(
         &mut self,
         model: wasi_llm::InferencingModel,
         prompt: String,
         params: wasi_llm::InferencingParams,
     ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
-        match &self.agent {
-            Agent::OpenAI {
-                auth_token,
-                url,
-                client,
-            } => {
-                OpenAIAgentEngine::infer(auth_token, url, client.clone(), model, prompt, params)
-                    .await
-            }
-            Agent::Default {
-                auth_token,
-                url,
-                client,
-            } => {
-                DefaultAgentEngine::infer(auth_token, url, client.clone(), model, prompt, params)
-                    .await
-            }
-        }
+        self.worker.infer(model, prompt, params).await
     }
 
     pub async fn generate_embeddings(
@@ -187,37 +158,11 @@ impl RemoteHttpLlmEngine {
         model: wasi_llm::EmbeddingModel,
         data: Vec<String>,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
-        match &self.agent {
-            Agent::OpenAI {
-                auth_token,
-                url,
-                client,
-            } => {
-                OpenAIAgentEngine::generate_embeddings(auth_token, url, client.clone(), model, data)
-                    .await
-            }
-            Agent::Default {
-                auth_token,
-                url,
-                client,
-            } => {
-                DefaultAgentEngine::generate_embeddings(
-                    auth_token,
-                    url,
-                    client.clone(),
-                    model,
-                    data,
-                )
-                .await
-            }
-        }
+        self.worker.generate_embeddings(model, data).await
     }
 
     pub fn url(&self) -> Url {
-        match &self.agent {
-            Agent::OpenAI { url, .. } => url.clone(),
-            Agent::Default { url, .. } => url.clone(),
-        }
+        self.worker.url()
     }
 }
 
@@ -267,19 +212,11 @@ impl From<CreateEmbeddingResponse> for wasi_llm::EmbeddingsResult {
     }
 }
 
-#[derive(Debug, serde::Deserialize, PartialEq)]
+#[derive(Debug, Default, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum CustomLlm {
     /// Compatible with OpenAI's API alongside some other LLMs
     OpenAi,
-}
-
-impl TryFrom<&str> for CustomLlm {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value.to_lowercase().as_str() {
-            "open_ai" | "openai" => Ok(CustomLlm::OpenAi),
-            _ => Err(anyhow::anyhow!("Invalid custom LLM: {}", value)),
-        }
-    }
+    #[default]
+    Default,
 }

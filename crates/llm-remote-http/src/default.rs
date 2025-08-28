@@ -4,27 +4,43 @@ use reqwest::{
     Client, Url,
 };
 use serde_json::json;
-use spin_world::v2::llm::{self as wasi_llm};
+use spin_world::{
+    async_trait,
+    v2::llm::{self as wasi_llm},
+};
 
-use crate::{EmbeddingResponseBody, InferRequestBodyParams, InferResponseBody};
+use crate::{EmbeddingResponseBody, InferRequestBodyParams, InferResponseBody, LlmWorker};
 
-pub(crate) struct DefaultAgentEngine;
+pub(crate) struct DefaultAgentEngine {
+    auth_token: String,
+    url: Url,
+    client: Option<Client>,
+}
 
 impl DefaultAgentEngine {
-    pub async fn infer(
-        auth_token: &String,
-        url: &Url,
-        mut client: Option<Client>,
+    pub fn new(auth_token: String, url: Url, client: Option<Client>) -> Self {
+        Self {
+            auth_token,
+            url,
+            client,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmWorker for DefaultAgentEngine {
+    async fn infer(
+        &mut self,
         model: wasi_llm::InferencingModel,
         prompt: String,
         params: wasi_llm::InferencingParams,
     ) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
-        let client = client.get_or_insert_with(Default::default);
+        let client = self.client.get_or_insert_with(Default::default);
 
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            HeaderValue::from_str(&format!("bearer {}", auth_token)).map_err(|_| {
+            HeaderValue::from_str(&format!("bearer {}", self.auth_token)).map_err(|_| {
                 wasi_llm::Error::RuntimeError("Failed to create authorization header".to_string())
             })?,
         );
@@ -45,7 +61,8 @@ impl DefaultAgentEngine {
         }))
         .map_err(|_| wasi_llm::Error::RuntimeError("Failed to serialize JSON".to_string()))?;
 
-        let infer_url = url
+        let infer_url = self
+            .url
             .join("/infer")
             .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
         tracing::info!("Sending remote inference request to {infer_url}");
@@ -68,19 +85,17 @@ impl DefaultAgentEngine {
         }
     }
 
-    pub async fn generate_embeddings(
-        auth_token: &String,
-        url: &Url,
-        mut client: Option<Client>,
+    async fn generate_embeddings(
+        &mut self,
         model: wasi_llm::EmbeddingModel,
         data: Vec<String>,
     ) -> Result<wasi_llm::EmbeddingsResult, wasi_llm::Error> {
-        let client = client.get_or_insert_with(Default::default);
+        let client = self.client.get_or_insert_with(Default::default);
 
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            HeaderValue::from_str(&format!("bearer {}", auth_token)).map_err(|_| {
+            HeaderValue::from_str(&format!("bearer {}", self.auth_token)).map_err(|_| {
                 wasi_llm::Error::RuntimeError("Failed to create authorization header".to_string())
             })?,
         );
@@ -95,7 +110,7 @@ impl DefaultAgentEngine {
         let resp = client
             .request(
                 reqwest::Method::POST,
-                url.join("/embed").map_err(|_| {
+                self.url.join("/embed").map_err(|_| {
                     wasi_llm::Error::RuntimeError("Failed to create URL".to_string())
                 })?,
             )
@@ -113,5 +128,9 @@ impl DefaultAgentEngine {
                 "Failed to deserialize response  for \"POST  /embed\": {err}"
             ))),
         }
+    }
+
+    fn url(&self) -> Url {
+        self.url.clone()
     }
 }
