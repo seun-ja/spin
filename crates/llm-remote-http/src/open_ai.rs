@@ -50,7 +50,7 @@ impl LlmWorker for OpenAIAgentEngine {
 
         let chat_url = self
             .url
-            .join("/api/generate")
+            .join("/v1/chat/completions")
             .map_err(|_| wasi_llm::Error::RuntimeError("Failed to create URL".to_string()))?;
 
         tracing::info!("Sending remote inference request to {chat_url}");
