@@ -6,7 +6,8 @@ edition = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-reqwest = { workspace = true, features = ["gzip", "json"] }
+futures-util = "0.3.31"
+reqwest = { workspace = true, features = ["gzip", "json",] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 spin-telemetry = { path = "../telemetry" }

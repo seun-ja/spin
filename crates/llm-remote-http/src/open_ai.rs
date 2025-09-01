@@ -1,6 +1,7 @@
+use futures_util::stream::StreamExt;
 use reqwest::{
     header::{HeaderMap, HeaderValue},
-    Client, Url,
+    Client, Response, Url,
 };
 use serde::Serialize;
 use spin_world::{
@@ -63,6 +64,7 @@ impl LlmWorker for OpenAIAgentEngine {
             frequency_penalty: Some(params.repeat_penalty),
             reasoning_effort: None,
             verbosity: None,
+            stream: None,
         };
 
         let resp = client
@@ -77,12 +79,16 @@ impl LlmWorker for OpenAIAgentEngine {
                 ))
             })?;
 
-        match resp.json::<CreateChatCompletionResponses>().await {
-            Ok(CreateChatCompletionResponses::Success(val)) => Ok(val.into()),
-            Ok(CreateChatCompletionResponses::Error { error }) => Err(error.into()),
-            Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
-                "Failed to deserialize response for \"POST  /v1/chat/completions\": {err}"
-            ))),
+        if let Some(true) = body.stream {
+            handle_stream_response(resp).await
+        } else {
+            match resp.json::<CreateChatCompletionResponses>().await {
+                Ok(CreateChatCompletionResponses::Success(val)) => Ok(val.into()),
+                Ok(CreateChatCompletionResponses::Error { error }) => Err(error.into()),
+                Err(err) => Err(wasi_llm::Error::RuntimeError(format!(
+                    "Failed to deserialize response for \"POST  /v1/chat/completions\": {err}"
+                ))),
+            }
         }
     }
 
@@ -153,6 +159,8 @@ struct CreateChatCompletionRequest {
     reasoning_effort: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     verbosity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 #[derive(Serialize, Debug)]
@@ -179,4 +187,34 @@ enum CreateChatCompletionResponses {
 enum CreateEmbeddingResponses {
     Success(CreateEmbeddingResponse),
     Error { error: ResponseError },
+}
+
+async fn handle_stream_response(
+    resp: Response,
+) -> Result<wasi_llm::InferencingResult, wasi_llm::Error> {
+    let mut stream = resp.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        if let Ok(byte) = chunk {
+            match serde_json::from_slice::<CreateChatCompletionResponses>(&byte) {
+                Ok(CreateChatCompletionResponses::Success(val)) => {
+                    if !val.choices.is_empty() {
+                        if val.choices[0].finish_reason != "stop" {
+                            todo!()
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                Ok(CreateChatCompletionResponses::Error { error }) => return Err(error.into()),
+                Err(err) => {
+                    return Err(wasi_llm::Error::RuntimeError(format!(
+                        "Failed to deserialize response for \"POST  /v1/chat/completions\": {err}"
+                    )))
+                }
+            }
+        }
+    }
+
+    todo!()
 }

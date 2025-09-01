@@ -122,7 +122,7 @@ pub struct ChatCompletionChoice {
     /// The reason the model stopped generating tokens. This will be `stop` if the model hit a
     /// natural stop point or a provided stop sequence,
     #[serde(rename = "finish_reason")]
-    _finish_reason: String,
+    pub finish_reason: String,
     /// Log probability information for the choice.
     #[serde(rename = "logprobs")]
     _logprobs: Option<Logprobs>,
