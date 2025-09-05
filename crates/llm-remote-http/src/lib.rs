@@ -17,10 +17,10 @@ pub struct RemoteHttpLlmEngine {
 }
 
 impl RemoteHttpLlmEngine {
-    pub fn new(url: Url, auth_token: String, custom_llm: CustomLlm) -> Self {
-        let worker: Box<dyn LlmWorker> = match custom_llm {
-            CustomLlm::OpenAi => Box::new(open_ai::OpenAIAgentEngine::new(auth_token, url, None)),
-            CustomLlm::Default => Box::new(default::DefaultAgentEngine::new(auth_token, url, None)),
+    pub fn new(url: Url, auth_token: String, api_type: ApiType) -> Self {
+        let worker: Box<dyn LlmWorker> = match api_type {
+            ApiType::OpenAi => Box::new(open_ai::OpenAIAgentEngine::new(auth_token, url, None)),
+            ApiType::Default => Box::new(default::DefaultAgentEngine::new(auth_token, url, None)),
         };
         Self { worker }
     }
@@ -214,7 +214,7 @@ impl From<CreateEmbeddingResponse> for wasi_llm::EmbeddingsResult {
 
 #[derive(Debug, Default, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum CustomLlm {
+pub enum ApiType {
     /// Compatible with OpenAI's API alongside some other LLMs
     OpenAi,
     #[default]
