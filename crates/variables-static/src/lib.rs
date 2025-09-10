@@ -11,7 +11,6 @@ mod source;
 #[derive(Debug, Deserialize, Clone)]
 pub struct StaticVariablesProvider {
     values: Arc<HashMap<String, String>>,
-    kind: ProviderVariableKind,
 }
 
 #[async_trait]
@@ -20,8 +19,8 @@ impl Provider for StaticVariablesProvider {
         Ok(self.values.get(key.as_str()).cloned())
     }
 
-    fn kind(&self) -> &ProviderVariableKind {
-        &self.kind
+    fn kind(&self) -> ProviderVariableKind {
+        ProviderVariableKind::Static
     }
 }
 
@@ -38,7 +37,6 @@ impl StaticVariablesProvider {
             .collect();
         Self {
             values: Arc::new(values),
-            kind: ProviderVariableKind::Static,
         }
     }
 }

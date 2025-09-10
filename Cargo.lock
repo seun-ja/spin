@@ -8444,7 +8444,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
- "serde",
  "spin-locked-app",
  "thiserror 2.0.12",
  "tokio",

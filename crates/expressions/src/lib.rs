@@ -1,7 +1,7 @@
 pub mod provider;
 mod template;
 
-use std::{borrow::Cow, collections::HashMap, fmt::Debug};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug, vec};
 
 use spin_locked_app::Variable;
 
@@ -92,28 +92,45 @@ impl ProviderResolver {
         Ok(PreparedResolver { variables })
     }
 
-    /// Prepares the resolver by attempting to resolve all variables, printing warnings for any
-    /// that cannot be resolved.
-    pub async fn pre_runtime_prepare(&self) -> Result<()> {
-        for name in self.internal.variables.keys() {
-            self.check_variable_existence(name).await?;
-        }
-        Ok(())
-    }
-
-    async fn check_variable_existence(&self, key: &str) -> Result<()> {
-        for provider in &self.providers {
-            if provider.kind() == &ProviderVariableKind::Dynamic {
-                continue;
-            }
-
-            match provider.get(&Key(key)).await {
-                Ok(Some(_)) => return Ok(()),
-                Err(_) | Ok(None) => return self.internal.resolve_variable(key).map(|_| ()),
-            }
+    /// Validates `Provider` that are `ProviderVariableKind::Static` provides its variable during startup.
+    pub async fn validate_variable_existence(&self) -> Result<()> {
+        // If a dynamic provider is available, skip validation.
+        if self
+            .providers
+            .iter()
+            .any(|p| p.kind() == ProviderVariableKind::Dynamic)
+        {
+            return Ok(());
         }
 
-        Ok(())
+        let mut unvalidated_keys = vec![];
+        for key in self.internal.variables.keys() {
+            let mut resolved = false;
+
+            for provider in &self.providers {
+                if provider
+                    .get(&Key(key))
+                    .await
+                    .map_err(Error::Provider)?
+                    .is_some()
+                {
+                    resolved = true;
+                    break;
+                }
+            }
+
+            if !resolved {
+                unvalidated_keys.push(key);
+            }
+        }
+
+        if unvalidated_keys.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Provider(anyhow::anyhow!(
+                "no provider resolved required variables: {unvalidated_keys:?}",
+            )))
+        }
     }
 
     async fn resolve_variable(&self, key: &str) -> Result<String> {
@@ -351,8 +368,8 @@ mod tests {
             }
         }
 
-        fn kind(&self) -> &ProviderVariableKind {
-            &ProviderVariableKind::Static
+        fn kind(&self) -> ProviderVariableKind {
+            ProviderVariableKind::Static
         }
     }
 

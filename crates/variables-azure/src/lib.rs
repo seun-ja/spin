@@ -107,7 +107,6 @@ pub enum AzureKeyVaultAuthOptions {
 #[derive(Debug)]
 pub struct AzureKeyVaultProvider {
     secret_client: SecretClient,
-    kind: ProviderVariableKind,
 }
 
 impl AzureKeyVaultProvider {
@@ -137,7 +136,6 @@ impl AzureKeyVaultProvider {
 
         Ok(Self {
             secret_client: SecretClient::new(&vault_url.into(), token_credential)?,
-            kind: ProviderVariableKind::Dynamic,
         })
     }
 }
@@ -154,8 +152,8 @@ impl Provider for AzureKeyVaultProvider {
         Ok(Some(secret.value))
     }
 
-    fn kind(&self) -> &ProviderVariableKind {
-        &self.kind
+    fn kind(&self) -> ProviderVariableKind {
+        ProviderVariableKind::Dynamic
     }
 }
 

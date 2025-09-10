@@ -23,7 +23,6 @@ pub struct VaultVariablesProvider {
     /// The optional prefix to use for all keys.
     #[serde(default)]
     prefix: Option<String>,
-    kind: ProviderVariableKind,
 }
 
 #[async_trait]
@@ -54,7 +53,7 @@ impl Provider for VaultVariablesProvider {
         }
     }
 
-    fn kind(&self) -> &ProviderVariableKind {
-        &self.kind
+    fn kind(&self) -> ProviderVariableKind {
+        ProviderVariableKind::Dynamic
     }
 }

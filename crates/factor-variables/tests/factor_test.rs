@@ -47,7 +47,7 @@ impl Provider for MockProvider {
         }
     }
 
-    fn kind(&self) -> &ProviderVariableKind {
-        &ProviderVariableKind::Dynamic
+    fn kind(&self) -> ProviderVariableKind {
+        ProviderVariableKind::Dynamic
     }
 }

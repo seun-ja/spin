@@ -26,7 +26,7 @@ pub use sqlite_statements::SqlStatementExecutorHook;
 use stdio::FollowComponents;
 pub use stdio::StdioLoggingExecutorHooks;
 pub use summary::{KeyValueDefaultStoreSummaryHook, SqliteDefaultStoreSummaryHook};
-pub use variable::VariablesPreparationExecutorHook;
+pub use variable::VariablesValidatorHook;
 
 pub const APP_LOG_DIR: &str = "APP_LOG_DIR";
 pub const SPIN_TRUNCATE_LOGS: &str = "SPIN_TRUNCATE_LOGS";

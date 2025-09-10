@@ -35,7 +35,6 @@ pub struct EnvVariablesProvider {
     env_fetcher: EnvFetcherFn,
     dotenv_path: Option<PathBuf>,
     dotenv_cache: OnceLock<HashMap<String, String>>,
-    kind: ProviderVariableKind,
 }
 
 impl Default for EnvVariablesProvider {
@@ -45,7 +44,6 @@ impl Default for EnvVariablesProvider {
             env_fetcher: Box::new(|s| std::env::var(s)),
             dotenv_path: Some(".env".into()),
             dotenv_cache: Default::default(),
-            kind: ProviderVariableKind::Static,
         }
     }
 }
@@ -68,7 +66,6 @@ impl EnvVariablesProvider {
             dotenv_path,
             env_fetcher: Box::new(env_fetcher),
             dotenv_cache: Default::default(),
-            kind: ProviderVariableKind::Static,
         }
     }
 
@@ -136,8 +133,8 @@ impl Provider for EnvVariablesProvider {
         tokio::task::block_in_place(|| self.get_sync(key))
     }
 
-    fn kind(&self) -> &ProviderVariableKind {
-        &self.kind
+    fn kind(&self) -> ProviderVariableKind {
+        ProviderVariableKind::Static
     }
 }
 

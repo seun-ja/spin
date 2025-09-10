@@ -3,10 +3,10 @@ use spin_factors::RuntimeFactors;
 use spin_factors_executor::ExecutorHooks;
 
 /// An executor hook that prepares the variables factor before runtime execution.
-pub struct VariablesPreparationExecutorHook;
+pub struct VariablesValidatorHook;
 
 #[spin_core::async_trait]
-impl<F: RuntimeFactors, U> ExecutorHooks<F, U> for VariablesPreparationExecutorHook {
+impl<F: RuntimeFactors, U> ExecutorHooks<F, U> for VariablesValidatorHook {
     async fn configure_app(
         &self,
         configured_app: &spin_factors::ConfiguredApp<F>,
@@ -14,7 +14,7 @@ impl<F: RuntimeFactors, U> ExecutorHooks<F, U> for VariablesPreparationExecutorH
         let variables_factor = configured_app.app_state::<VariablesFactor>()?;
 
         let expression_resolver = variables_factor.expression_resolver();
-        expression_resolver.pre_runtime_prepare().await?;
+        expression_resolver.validate_variable_existence().await?;
 
         Ok(())
     }
