@@ -6,7 +6,7 @@ trigger = { type = "http" }
 version = "0.1.0"
 
 [variables]
-password = { required = true }
+password = { default = "test_password" }
 greeting = { default = "Hello!" }
 
 [[component]]
