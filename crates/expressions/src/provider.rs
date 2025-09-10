@@ -17,8 +17,10 @@ pub trait Provider: Debug + Send + Sync {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub enum ProviderVariableKind {
     /// Variable must be declared on start
+    #[serde(rename = "static")]
     Static,
     /// Variable can be made available at runtime
+    #[serde(rename = "dynamic")]
     #[default]
     Dynamic,
 }
