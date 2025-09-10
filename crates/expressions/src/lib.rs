@@ -11,6 +11,8 @@ pub use provider::Provider;
 use template::Part;
 pub use template::Template;
 
+use crate::provider::ProviderVariableKind;
+
 /// A [`ProviderResolver`] that can be shared.
 pub type SharedPreparedResolver =
     std::sync::Arc<std::sync::OnceLock<std::sync::Arc<PreparedResolver>>>;
@@ -88,6 +90,30 @@ impl ProviderResolver {
             variables.insert(name.clone(), value);
         }
         Ok(PreparedResolver { variables })
+    }
+
+    /// Prepares the resolver by attempting to resolve all variables, printing warnings for any
+    /// that cannot be resolved.
+    pub async fn pre_runtime_prepare(&self) -> Result<()> {
+        for name in self.internal.variables.keys() {
+            self.check_variable_existence(name).await?;
+        }
+        Ok(())
+    }
+
+    async fn check_variable_existence(&self, key: &str) -> Result<()> {
+        for provider in &self.providers {
+            if provider.kind() == &ProviderVariableKind::Dynamic {
+                continue;
+            }
+
+            match provider.get(&Key(key)).await {
+                Ok(Some(_)) => return Ok(()),
+                Err(_) | Ok(None) => return self.internal.resolve_variable(key).map(|_| ()),
+            }
+        }
+
+        Ok(())
     }
 
     async fn resolve_variable(&self, key: &str) -> Result<String> {
@@ -310,6 +336,7 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
+    use crate::provider::ProviderVariableKind;
 
     #[derive(Debug)]
     struct TestProvider;
@@ -322,6 +349,10 @@ mod tests {
                 "broken" => anyhow::bail!("broken"),
                 _ => Ok(None),
             }
+        }
+
+        fn kind(&self) -> &ProviderVariableKind {
+            &ProviderVariableKind::Static
         }
     }
 
