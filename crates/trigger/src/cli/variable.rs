@@ -11,9 +11,9 @@ impl<F: RuntimeFactors, U> ExecutorHooks<F, U> for VariablesValidatorHook {
         &self,
         configured_app: &spin_factors::ConfiguredApp<F>,
     ) -> anyhow::Result<()> {
-        let variables_factor = configured_app.app_state::<VariablesFactor>()?;
+        let variables_factor_app_state = configured_app.app_state::<VariablesFactor>()?;
 
-        let expression_resolver = variables_factor.expression_resolver();
+        let expression_resolver = variables_factor_app_state.expression_resolver();
         expression_resolver.validate_variable_existence().await?;
 
         Ok(())
