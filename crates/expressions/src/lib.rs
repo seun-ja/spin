@@ -135,7 +135,7 @@ impl ProviderResolver {
             Ok(())
         } else {
             Err(Error::Provider(anyhow::anyhow!(
-                "no provider resolved required variables: {unvalidated_keys:?}",
+                "no provider resolved required variable(s): {unvalidated_keys:?}",
             )))
         }
     }
