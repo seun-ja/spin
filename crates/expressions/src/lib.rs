@@ -105,6 +105,13 @@ impl ProviderResolver {
 
         let mut unvalidated_keys = vec![];
         for key in self.internal.variables.keys() {
+            // If default value is provided, skip validation.
+            if let Some(value) = self.internal.variables.get(key) {
+                if value.default.is_some() {
+                    continue;
+                }
+            }
+
             let mut resolved = false;
 
             for provider in &self.providers {
