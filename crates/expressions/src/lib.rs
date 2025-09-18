@@ -92,8 +92,8 @@ impl ProviderResolver {
         Ok(PreparedResolver { variables })
     }
 
-    /// Validates `Provider` that are `ProviderVariableKind::Static` provides its variable during startup.
-    pub async fn validate_variable_existence(&self) -> Result<()> {
+    /// Validates `Provider`(s) that are `ProviderVariableKind::Static` provide their variables at startup.
+    pub async fn validate_variables(&self) -> Result<()> {
         // If a dynamic provider is available, skip validation.
         if self
             .providers
