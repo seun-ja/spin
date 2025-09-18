@@ -118,11 +118,11 @@ async fn if_there_is_a_dynamic_provider_and_a_static_provider_then_validation_su
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn static_provider_with_two_static_providers() -> anyhow::Result<()> {
+async fn if_there_is_two_static_providers_where_one_has_data_is_valid() -> anyhow::Result<()> {
     let resolver = ResolverTester::new()
         .with_provider(Box::new(StaticMockProvider::with_variables("foo", "bar")))
         .with_provider(Box::new(StaticMockProvider::with_variables("baz", "hay")))
-        .make_resolver(Some("baz"), Some("hay"))?;
+        .make_resolver(Some("foo"), None)?;
 
     resolver.validate_variables().await?;
 
@@ -130,7 +130,7 @@ async fn static_provider_with_two_static_providers() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn static_provider_with_two_static_providers_where_first_provider_does_not_have_data_while_second_provider_does(
+async fn if_there_is_two_static_providers_where_first_provider_does_not_have_data_while_second_provider_does(
 ) -> anyhow::Result<()> {
     let resolver = ResolverTester::new()
         .with_provider(Box::new(StaticMockProvider::with_variables("foo", "bar")))
@@ -143,8 +143,7 @@ async fn static_provider_with_two_static_providers_where_first_provider_does_not
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn static_provider_with_two_static_providers_neither_has_data_is_invalid(
-) -> anyhow::Result<()> {
+async fn if_there_is_two_static_providers_neither_having_data_is_invalid() -> anyhow::Result<()> {
     let resolver = ResolverTester::new()
         .with_provider(Box::new(StaticMockProvider::with_variables("foo", "bar")))
         .with_provider(Box::new(StaticMockProvider::with_variables("baz", "hay")))
