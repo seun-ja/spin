@@ -33,7 +33,7 @@ pub struct Variable {
     ///
     /// Learn more: https://spinframework.dev/variables#adding-variables-to-your-applications
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default: Option<String>,
+    pub default: Option<VariableDefault>,
     /// If set, this variable should be treated as sensitive.
     ///
     /// Example: `secret = true`
@@ -218,4 +218,30 @@ pub enum Commands {
 
 fn is_false(v: &bool) -> bool {
     !*v
+}
+
+/// The default value for a variable. If multiple values are specified, they are
+/// run sequentially from left to right.
+///
+/// Example: `default = "hello"`, `default = ["hello", "world"]`
+///
+/// Learn more: https://spinframework.dev/build#setting-up-for-spin-build
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum VariableDefault {
+    /// `default = "hello"`
+    #[schemars(description = "")] // schema docs are on the parent
+    Single(String),
+    /// `default = ["hello", "world"]`
+    #[schemars(description = "")] // schema docs are on the parent
+    Multiple(Vec<String>),
+}
+
+impl ToString for VariableDefault {
+    fn to_string(&self) -> String {
+        match self {
+            VariableDefault::Single(value) => value.clone(),
+            VariableDefault::Multiple(_values) => todo!(),
+        }
+    }
 }

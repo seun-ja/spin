@@ -10,5 +10,6 @@ async-trait = { workspace = true }
 itertools = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+spin-manifest = { path = "../manifest" }
 spin-serde = { path = "../serde" }
 thiserror = { workspace = true }

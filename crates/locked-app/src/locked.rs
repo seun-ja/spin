@@ -5,6 +5,7 @@ use std::{collections::HashSet, path::PathBuf};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use spin_manifest::schema::VariableDefault;
 use spin_serde::{DependencyName, FixedVersionBackwardCompatible};
 use std::collections::BTreeMap;
 
@@ -347,7 +348,7 @@ pub struct Variable {
     pub description: Option<String>,
     /// The variable's default value. If unset, the variable is required.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default: Option<String>,
+    pub default: Option<VariableDefault>,
     /// If set, the variable's value may be sensitive and e.g. shouldn't be logged.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub secret: bool,

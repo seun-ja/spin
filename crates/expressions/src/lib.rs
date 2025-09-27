@@ -8,6 +8,7 @@ use spin_locked_app::Variable;
 pub use async_trait;
 
 pub use provider::Provider;
+use spin_manifest::schema::VariableDefault;
 use template::Part;
 pub use template::Template;
 
@@ -74,7 +75,7 @@ impl ProviderResolver {
         for part in template.parts() {
             resolved_parts.push(match part {
                 Part::Lit(lit) => lit.as_ref().into(),
-                Part::Expr(var) => self.resolve_variable(var).await?.into(),
+                Part::Expr(var) => self.resolve_variable(var).await?.to_string().into(),
             });
         }
         Ok(resolved_parts.concat())
@@ -85,15 +86,15 @@ impl ProviderResolver {
         let mut variables = HashMap::new();
         for name in self.internal.variables.keys() {
             let value = self.resolve_variable(name).await?;
-            variables.insert(name.clone(), value);
+            variables.insert(name.clone(), value.to_string());
         }
         Ok(PreparedResolver { variables })
     }
 
-    async fn resolve_variable(&self, key: &str) -> Result<String> {
+    async fn resolve_variable(&self, key: &str) -> Result<VariableDefault> {
         for provider in &self.providers {
             if let Some(value) = provider.get(&Key(key)).await.map_err(Error::Provider)? {
-                return Ok(value);
+                return Ok(VariableDefault::Single(value));
             }
         }
         self.internal.resolve_variable(key)
@@ -146,19 +147,22 @@ impl Resolver {
     /// Resolves a variable value for the given path.
     pub fn resolve(&self, component_id: &str, key: Key<'_>) -> Result<String> {
         let template = self.get_template(component_id, key)?;
-        self.resolve_template(template)
+        self.resolve_template(template).map(|t| t.to_string())
     }
 
     /// Resolves the given template.
-    pub fn resolve_template(&self, template: &Template) -> Result<String> {
+    pub fn resolve_template(&self, template: &Template) -> Result<VariableDefault> {
         let mut resolved_parts: Vec<Cow<str>> = Vec::with_capacity(template.parts().len());
         for part in template.parts() {
             resolved_parts.push(match part {
-                Part::Lit(lit) => lit.as_ref().into(),
-                Part::Expr(var) => self.resolve_variable(var)?.into(),
+                Part::Lit(lit) => {
+                    let x = lit.as_ref().into();
+                    x
+                }
+                Part::Expr(var) => self.resolve_variable(var)?.to_string().into(),
             });
         }
-        Ok(resolved_parts.concat())
+        Ok(VariableDefault::Single(resolved_parts.concat()))
     }
 
     /// Gets a template for the given path.
@@ -173,7 +177,7 @@ impl Resolver {
         Ok(template)
     }
 
-    fn resolve_variable(&self, key: &str) -> Result<String> {
+    fn resolve_variable(&self, key: &str) -> Result<VariableDefault> {
         let var = self
             .variables
             .get(key)
@@ -339,7 +343,7 @@ mod tests {
                 "default".into(),
                 Variable {
                     description: None,
-                    default: Some("default-value".into()),
+                    default: Some(VariableDefault::Multiple(vec!["default-value".into()])),
                     secret: false,
                 },
             ),

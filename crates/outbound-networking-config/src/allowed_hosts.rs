@@ -443,7 +443,7 @@ impl PartialAllowedHostConfig {
                 // We're missing a default value so we can't validate further
                 return Ok(());
             };
-            AllowedHostConfig::parse(&resolved).with_context(|| {
+            AllowedHostConfig::parse(&resolved.to_string()).with_context(|| {
                 let template_str = template.to_string();
                 format!("using default variable value(s) with template {template_str:?} results in invalid config {resolved:?}")
             })?;
